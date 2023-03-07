@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,7 +8,7 @@ from torchvision import models
 
 
 class ResNet18(nn.Module):
-    def __init__(self, nn_inputs, h, w, outputs, weight_init="kaiminghe") -> None:
+    def __init__(self, nn_inputs, h, w, outputs, device, weight_init="kaiminghe" ) -> None:
         super().__init__()
 
         self.nn_inputs = nn_inputs
@@ -34,7 +33,7 @@ class ResNet18(nn.Module):
         num_ftrs = net.fc.in_features
         net.fc = nn.Linear(num_ftrs, self.outputs)
 
-        self.net = net
+        self.net = net.to(device)
 
     def forward(self, inputs):
         x = self.net(inputs)
