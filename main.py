@@ -42,6 +42,7 @@ def assert_disjoint(x, y, message):
             if(np.array_equal(xi, yi)):
                 copies.append(xi)
             # assert not np.array_equal(xi, yi), message
+    return copies
 
 def process_data(path):
     x_train = []
