@@ -33,7 +33,7 @@ class ResNet18(nn.Module):
         num_ftrs = net.fc.in_features
         net.fc = nn.Linear(num_ftrs, self.outputs)
 
-        self.net = net.to(device)
+        self.net = net
 
     def forward(self, inputs):
         x = self.net(inputs)

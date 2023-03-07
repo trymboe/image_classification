@@ -116,11 +116,7 @@ def process_data(path):
     return train_loader, test_loader, val_loader
 
 def create_model(device):
-<<<<<<< HEAD
-    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES)).to(device)
-=======
-    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES), device)
->>>>>>> 5f5c995dfeb0c62835c9431996424be1a390fc53
+    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES), device).to(device)
 
     critirion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(resnet18.parameters(), lr=LR, momentum=MOMENTUM)
@@ -190,12 +186,8 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-<<<<<<< HEAD
-    model_path = "models/model1_100"
-=======
     model_path = "models/model1_50"
->>>>>>> 5f5c995dfeb0c62835c9431996424be1a390fc53
-    train = True
+    train = False
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
@@ -204,7 +196,7 @@ if __name__ == "__main__":
     if train:
         train_model(model, critirion, optimizer, model_path, device)
     else:
-        model.load_state_dict(torch.load(model_path))
+        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
         model.eval()
         loss, accuracy = evaluate(model, critirion, test_loader, device, show=True)
         print(f"Validation loss: {loss:.4f}, Validation accuracy: {accuracy:.4f}")
