@@ -115,8 +115,8 @@ def process_data(path):
 
     return train_loader, test_loader, val_loader
 
-def create_model():
-    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES))
+def create_model(device):
+    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES), device)
 
     critirion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(resnet18.parameters(), lr=LR, momentum=MOMENTUM)
@@ -187,11 +187,11 @@ if __name__ == "__main__":
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     model_path = "models/model1_50"
-    train = False
+    train = True
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
-    model, critirion, optimizer = create_model()
+    model, critirion, optimizer = create_model(device)
     print("model created")
     if train:
         train_model(model, critirion, optimizer, model_path)
