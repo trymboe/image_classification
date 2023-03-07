@@ -1,19 +1,19 @@
-import numpy as np
-import torch
-import torch.nn as nn
 import os
+import torch
+import hashlib
+import numpy as np
+import torch.nn as nn
 import matplotlib.pyplot as plt
-import torchvision.models as models
+
 
 from PIL import Image
-from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
-from matplotlib import cm
+from sklearn.model_selection import train_test_split
 
-from dataloader import Image_DL
 from resnet import ResNet18
+from dataloader import Image_DL
 
-np.random.seed(69)
+# np.random.seed(69)
 
 CLASSES = {
             "forest" : [1,0,0,0,0,0], "buildings" : [0,1,0,0,0,0],
@@ -30,18 +30,31 @@ BATCH_SIZE = 64
 ACCUMULATION_STEPS = 4
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 10
+EPOCHS = 50
 
-def assert_disjoint(x, y, message):
+
+def get_image_hash(image):
     """
-    Assert that two lists of arrays are disjoint.
+    Computes the SHA-256 hash of an image array.
     """
-    copies = []
-    for xi in x:
-        for yi in y:
-            if(np.array_equal(xi, yi)):
-                copies.append(xi)
-            # assert not np.array_equal(xi, yi), message
+    return hashlib.sha256(image.tobytes()).hexdigest()
+
+def check_for_duplicates(arrays):
+    """
+    Checks if any of the three arrays contain any of the exact same images.
+    """
+    copies = 0
+    hashes = set()
+    for arr in arrays:
+        for image in arr:
+            image_hash = get_image_hash(image)
+            if image_hash in hashes:
+                copies += 1
+                image = np.transpose(image, (2, 1, 0))
+                plt.imshow(image)
+                plt.figure
+            hashes.add(image_hash)
+    plt.show()
     return copies
 
 def process_data(path):
@@ -54,14 +67,18 @@ def process_data(path):
 
     images = []
     labels = []
+    hashes = set()
 
     for folder in os.listdir(path):
         #dont want .DS_Store
         if "DS" not in folder:
-            for img in os.listdir(path+'/'+folder+'/test'):
+            for img in os.listdir(path+'/'+folder):
                 if img.endswith('.jpg'):
                     image = np.array(Image.open(os.path.join(path,folder,img)))
-                    if image.shape == (150,150,3):
+                    image_hash = get_image_hash(image)
+                    #Do not want duplicates or images of wrong dimention
+                    if image.shape == (150,150,3) and image_hash not in hashes:
+                        hashes.add(image_hash)
                         image = image.astype(np.float32) / 255.0
 
                         image = np.transpose(image, (2, 0, 1))
@@ -74,20 +91,16 @@ def process_data(path):
     images = np.asarray(images)
     labels = np.asarray(labels)
 
-    x_train, x_test, y_train, y_test = train_test_split(images, labels, test_size=0.3, stratify=labels, random_state=1)
-    x_test, x_val, y_test, y_val = train_test_split(x_test, y_test, test_size=0.4, stratify=y_test, random_state=1)
+    
+    # Split data into train and validation sets
+    x_train_val, x_test, y_train_val, y_test = train_test_split(images, labels, test_size=0.2, stratify=labels, random_state=42)
+
+    # Split validation set into validation and test sets
+    x_train, x_val, y_train, y_val = train_test_split(x_train_val, y_train_val, test_size=0.25, stratify=y_train_val, random_state=42)
 
 
-    #assert if the splits are disjoined
-    copies = assert_disjoint(x_train, x_val, "The obtained splits are not disjoint")
-    print(f"deleting {len(copies)} elements from x_train")
-    x_train = np.delete(x_train, copies)
-    copies = assert_disjoint(x_train, x_test, "The obtained splits are not disjoint")
-    print(f"deleting {len(copies)} elements from x_train")
-    x_train = np.delete(x_train, copies)
-    copies = assert_disjoint(x_val, x_test, "The obtained splits are not disjoint")
-    print(f"deleting {len(copies)} elements from x_test")
-    x_train = np.delete(x_test, copies)
+    
+    assert check_for_duplicates([x_train, x_test, x_val]) == 0, "The obtained splits are not disjoint"
 
     print("assert done")
 
@@ -143,7 +156,6 @@ def evaluate(model,critirion, dataloader, device, show=False):
     correct = 0
     total = 0
     val_loss = 0
-    num_batches = len(dataloader)
 
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
@@ -174,7 +186,7 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_path = "models/model1"
+    model_path = "models/model1_50"
     train = False
 
     train_loader, test_loader, val_loader = process_data("data")
