@@ -36,9 +36,12 @@ def assert_disjoint(x, y, message):
     """
     Assert that two lists of arrays are disjoint.
     """
+    copies = []
     for xi in x:
         for yi in y:
-            assert not np.array_equal(xi, yi), message
+            if(np.array_equal(xi, yi)):
+                copies.append(xi)
+            # assert not np.array_equal(xi, yi), message
 
 def process_data(path):
     x_train = []
@@ -65,7 +68,7 @@ def process_data(path):
                         images.append(image)
                         labels.append(CLASSES_LIST.index(folder))
                         # labels.append(CLASSES[folder])
-    
+            print(f"{folder} done")
 
     images = np.asarray(images)
     labels = np.asarray(labels)
@@ -75,9 +78,17 @@ def process_data(path):
 
 
     #assert if the splits are disjoined
-    assert_disjoint(x_train, x_val, "The obtained splits are not disjoint")
-    assert_disjoint(x_train, x_test, "The obtained splits are not disjoint")
-    assert_disjoint(x_val, x_test, "The obtained splits are not disjoint")
+    copies = assert_disjoint(x_train, x_val, "The obtained splits are not disjoint")
+    print(f"deleting {len(copies)} elements from x_train")
+    x_train = np.delete(x_train, copies)
+    copies = assert_disjoint(x_train, x_test, "The obtained splits are not disjoint")
+    print(f"deleting {len(copies)} elements from x_train")
+    x_train = np.delete(x_train, copies)
+    copies = assert_disjoint(x_val, x_test, "The obtained splits are not disjoint")
+    print(f"deleting {len(copies)} elements from x_test")
+    x_train = np.delete(x_test, copies)
+
+    print("assert done")
 
 
     train_dl = Image_DL(x_train, y_train)
@@ -132,6 +143,7 @@ def evaluate(model,critirion, dataloader, device, show=False):
     total = 0
     val_loss = 0
     num_batches = len(dataloader)
+
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
             inputs, labels = data[0].to(device), data[1].to(device)
