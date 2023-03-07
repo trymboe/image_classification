@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from resnet import ResNet18
 from dataloader import Image_DL
 
-# np.random.seed(69)
+np.random.seed(69)
 
 CLASSES = {
             "forest" : [1,0,0,0,0,0], "buildings" : [0,1,0,0,0,0],
@@ -30,7 +30,7 @@ BATCH_SIZE = 64
 ACCUMULATION_STEPS = 4
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 50
+EPOCHS = 100
 
 
 def get_image_hash(image):
@@ -115,14 +115,14 @@ def process_data(path):
 
     return train_loader, test_loader, val_loader
 
-def create_model():
-    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES))
+def create_model(device):
+    resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES)).to(device)
 
     critirion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(resnet18.parameters(), lr=LR, momentum=MOMENTUM)
     return resnet18, critirion, optimizer
 
-def train_model(model, critirion, optimizer,model_path):
+def train_model(model, critirion, optimizer, model_path, device):
     for epoch in range(EPOCHS):
         running_loss = 0.0
         correct = 0
@@ -186,15 +186,15 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_path = "models/model1_50"
-    train = False
+    model_path = "models/model1_100"
+    train = True
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
-    model, critirion, optimizer = create_model()
+    model, critirion, optimizer = create_model(device)
     print("model created")
     if train:
-        train_model(model, critirion, optimizer, model_path)
+        train_model(model, critirion, optimizer, model_path, device)
     else:
         model.load_state_dict(torch.load(model_path))
         model.eval()
