@@ -14,6 +14,7 @@ from resnet import ResNet18
 from dataloader import Image_DL
 
 np.random.seed(69)
+torch.manual_seed(69)
 
 CLASSES = {
             "forest" : [1,0,0,0,0,0], "buildings" : [0,1,0,0,0,0],
@@ -26,22 +27,34 @@ CLASSES_LIST = ["forest", "buildings",
 WIDTH = 150
 HEIGHT = 150
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 ACCUMULATION_STEPS = 4
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 100
+EPOCHS = 2
 
 
 def get_image_hash(image):
     """
     Computes the SHA-256 hash of an image array.
+    
+    Args:
+    - image (numpy.ndarray)): Image that should be hashed
+
+    Returns:
+    - str: Hashed hexdecimals number
     """
     return hashlib.sha256(image.tobytes()).hexdigest()
 
 def check_for_duplicates(arrays):
     """
     Checks if any of the three arrays contain any of the exact same images.
+
+    Args:
+    - arrays (list/numpy array): List/array of images
+
+    Returns:
+    - int: number of duplicates in the list
     """
     copies = 0
     hashes = set()
@@ -58,6 +71,19 @@ def check_for_duplicates(arrays):
     return copies
 
 def process_data(path):
+    """
+    Process image data located at `path` and split into train, validation, and test sets.
+    Asserts that the splits are disjoint.
+    
+    Args:
+    - path (str): The path to the directory containing the image data.
+    
+    Returns:
+    - torch.utils.data.DataLoader: A DataLoader containing the training data.
+    - torch.utils.data.DataLoader: A DataLoader containing the test data.
+    - torch.utils.data.DataLoader: A DataLoader containing the validation data.
+    """
+
     x_train = []
     y_train = []
     x_val = []
@@ -72,7 +98,7 @@ def process_data(path):
     for folder in os.listdir(path):
         #dont want .DS_Store
         if "DS" not in folder:
-            for img in os.listdir(path+'/'+folder):
+            for img in os.listdir(path+'/'+folder+"/test"):
                 if img.endswith('.jpg'):
                     image = np.array(Image.open(os.path.join(path,folder,img)))
                     image_hash = get_image_hash(image)
@@ -109,13 +135,24 @@ def process_data(path):
     test_dl = Image_DL(x_test, y_test)
     val_dl = Image_DL(x_val, y_val)
 
-    train_loader = DataLoader(train_dl, batch_size=BATCH_SIZE, shuffle=True)
-    test_loader = DataLoader(test_dl, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dl, batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = DataLoader(train_dl, batch_size=BATCH_SIZE, drop_last=True)
+    test_loader = DataLoader(test_dl)
+    val_loader = DataLoader(val_dl, batch_size=BATCH_SIZE, drop_last=True)
 
     return train_loader, test_loader, val_loader
 
 def create_model(device):
+    '''
+    Creates a ResNet18 PyTorch model for image classification.
+
+    Args:
+        device (torch.device): The device on which to create the model.
+
+    Returns:
+        - torch.nn.Module: A ResNet18 model.
+        - torch.nn.CrossEntropyLoss: The loss function used for training the model.
+        - torch.optim.Optimizer: The optimizer used for updating the model weights during training.
+    '''
     resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES), device).to(device)
 
     critirion = torch.nn.CrossEntropyLoss()
@@ -123,6 +160,17 @@ def create_model(device):
     return resnet18, critirion, optimizer
 
 def train_model(model, critirion, optimizer, model_path, device):
+    '''
+    Trains a PyTorch model on a given dataset.
+    
+    Args:
+    - model (torch.nn.Module): The model you want to train.
+    - criterion (torch.nn.Module): The loss criterion you want to use.
+    - optimizer (torch.optim.Optimizer): The optimizer you want to use.
+    - dataloader (torch.utils.data.DataLoader): The dataloader containing the training data.
+    - model_path (str): The path you want to save your model to.
+    - device (torch.device): Device to use for training.
+    '''
     for epoch in range(EPOCHS):
         running_loss = 0.0
         correct = 0
@@ -145,17 +193,62 @@ def train_model(model, critirion, optimizer, model_path, device):
 
         # Evaluate on validation set
         with torch.no_grad():
-            val_loss, val_acc = evaluate(model, critirion, val_loader, device)
+            val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, False)
         
-        print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n"
-              f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.4f}")
-    torch.save(model.state_dict(), model_path)
+        # print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n"
+            #   f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.4f}")
+    
+    with torch.no_grad():
+        check = False
+        val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, True)
 
-def evaluate(model,critirion, dataloader, device, show=False):
+def get_top_bottom_10(softmax):
+    # Get the indices of the highest and lowest probability scores
+    max_indices = torch.topk(softmax, k=1, dim=1)[1].squeeze(1)
+    min_indices = torch.topk(softmax, k=1, dim=1, largest=False)[1].squeeze(1)
+
+    # Sort the softmax lists based on the highest and lowest indices
+    max_lists = torch.index_select(softmax, 0, max_indices)
+    min_lists = torch.index_select(softmax, 0, min_indices)
+
+    # Get the indices of the 2 softmax lists with the highest single probability score
+    topk_indices = torch.topk(max_lists.view(-1), k=2)[1]
+    highest_indices = max_indices[topk_indices]
+
+    # Get the indices of the 2 softmax lists with the lowest single probability score
+    lowk_indices = torch.topk(min_lists.view(-1), k=2, largest=False)[1]
+    lowest_indices = min_indices[lowk_indices]
+
+    print(highest_indices, lowest_indices)
+    print(softmax)
+
+
+def evaluate(model,critirion, dataloader, device, per_class=True, show=False, test=False):
+    '''
+    Evaluates a dataset on a model. Is used for validation for validation set and test set.
+    
+    Args:
+    - model (nn.Module): The model you want to evaluate
+    - criterion (nn.Module): The criterion you want to use
+    - dataloader (DataLoader): The dataloader object containing the data you want to evaluate
+    - device (torch.device): The device you want to run the evaluation on
+    - per_class (bool): If True, it will print the accuracy for each class individually
+    - show (bool): If True, it will print one image from each batch with the prediction and label. Default False
+
+    Returns:
+    - float: Loss of the model
+    - float: Accuracy of the model
+    '''
+    
     model.eval()
     correct = 0
     total = 0
     val_loss = 0
+
+    softmax = 0
+
+    correct_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    total_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
@@ -168,19 +261,48 @@ def evaluate(model,critirion, dataloader, device, show=False):
 
             _, predicted = torch.max(outputs.data, 1)
 
+            
+
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            if show: #and idx % (num_batches/6) == 0:
+
+            if test:
+                get_top_bottom_10(outputs)
+
+
+            if per_class:
+                mask1 = torch.eq(labels, predicted)
+                for i in range(len(CLASSES_LIST)):
+                    total_counts[i] += (labels == i).sum().item()
+                    
+                    #Find the accuracy per class
+                    mask2 = torch.eq(labels, i) 
+                    mask3 = torch.eq(predicted, i)
+                    mask4 = torch.logical_and(torch.logical_and(mask1, mask2), mask3)
+
+                    correct_counts[i] += torch.sum(mask4 == True,dim=0)
+
+            
+            if show:
                 image = np.transpose(inputs[0], (2, 1, 0))
                 plt.imshow(image)
                 plt.title(f"correct {CLASSES_LIST[labels[0]]}, predicted {CLASSES_LIST[predicted[0]]}")
                 plt.figure()
 
+    if per_class:
+        print(f"total accuracy is {100 * correct / total:.4f}")
+        for i in range(len(CLASSES_LIST)):
+            accuracy = 100 * correct_counts[i] / total_counts[i]
+            print("Accuracy for class {} is {:.2f}%".format(i, accuracy))
+
+
+
     accuracy = 100 * correct / total
-    return loss, accuracy
+    return loss, accuracy, (softmax, labels)
 
 
 if __name__ == "__main__":
+    print("start")
     # Set device to use
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #for training on GPU for M1 mac
@@ -198,7 +320,7 @@ if __name__ == "__main__":
     else:
         model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
         model.eval()
-        loss, accuracy = evaluate(model, critirion, test_loader, device, show=True)
+        loss, accuracy, softmax = evaluate(model, critirion, test_loader, device, show=False, test=True)
         print(f"Validation loss: {loss:.4f}, Validation accuracy: {accuracy:.4f}")
         plt.show()
 
