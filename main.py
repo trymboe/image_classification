@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 from torch.utils.data import DataLoader
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 
 from resnet import ResNet18
@@ -135,8 +136,10 @@ def process_data(path):
     test_dl = Image_DL(x_test, y_test)
     val_dl = Image_DL(x_val, y_val)
 
+
+
     train_loader = DataLoader(train_dl, batch_size=BATCH_SIZE, drop_last=True)
-    test_loader = DataLoader(test_dl)
+    test_loader = DataLoader(test_dl, batch_size=len(test_dl))
     val_loader = DataLoader(val_dl, batch_size=BATCH_SIZE, drop_last=True)
 
     return train_loader, test_loader, val_loader
@@ -202,26 +205,44 @@ def train_model(model, critirion, optimizer, model_path, device):
         check = False
         val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, True)
 
-def get_top_bottom_10(softmax):
+def get_top_bottom_10(softmax, inputs, labels):
     # Get the indices of the highest and lowest probability scores
-    max_indices = torch.topk(softmax, k=1, dim=1)[1].squeeze(1)
-    min_indices = torch.topk(softmax, k=1, dim=1, largest=False)[1].squeeze(1)
+    max_values = torch.topk(softmax, k=1, dim=1)[0].squeeze(1)
+    min_values = torch.topk(softmax, k=1, dim=1,largest=False)[0].squeeze(1)
+    top_values, top_indices = torch.topk(max_values, k=10)
+    bottom_values, bottom_indices = torch.topk(min_values, k=10, largest=False)
+    print()
+    for i in range(10):
 
-    # Sort the softmax lists based on the highest and lowest indices
-    max_lists = torch.index_select(softmax, 0, max_indices)
-    min_lists = torch.index_select(softmax, 0, min_indices)
+        image = np.transpose(inputs[top_indices[i]].numpy(), (2, 1, 0))
+        plt.imshow(image)
+        plt.title(f"Top score: label: {CLASSES_LIST[labels[top_indices[i]]]}, predicted: {CLASSES_LIST[torch.topk(softmax[top_indices[0]], k=1)[1].item()]}")
+        plt.figure()
+        
+        image = np.transpose(inputs[bottom_indices[i]].numpy(), (2, 1, 0))
+        plt.imshow(image)
+        plt.title(f"Bottom score: label: {CLASSES_LIST[labels[bottom_indices[i]]]}, predicted: {CLASSES_LIST[torch.topk(softmax[top_indices[0]], k=1)[1].item()]}")
+        plt.figure()
 
-    # Get the indices of the 2 softmax lists with the highest single probability score
-    topk_indices = torch.topk(max_lists.view(-1), k=2)[1]
-    highest_indices = max_indices[topk_indices]
+    plt.show()
 
-    # Get the indices of the 2 softmax lists with the lowest single probability score
-    lowk_indices = torch.topk(min_lists.view(-1), k=2, largest=False)[1]
-    lowest_indices = min_indices[lowk_indices]
+def get_precision(outputs, labels):
+    # Calculate the confusion matrix
+    print(outputs.shape)
+    print(labels.shape)
+    cm = confusion_matrix(labels, outputs)
 
-    print(highest_indices, lowest_indices)
-    print(softmax)
+    # Calculate the precision for each class
+    class_precision = []
+    for i in range(len(CLASSES_LIST)):
+        tp = cm[i,i]
+        fp = np.sum(cm[:,i]) - tp
+        precision = tp / (tp + fp)
+        class_precision.append(precision)
 
+    # Print the precision for each class
+    for i in range(len(CLASSES_LIST)):
+        print("Precision for class {}: {:.3f}".format(i, class_precision[i]))
 
 def evaluate(model,critirion, dataloader, device, per_class=True, show=False, test=False):
     '''
@@ -249,6 +270,7 @@ def evaluate(model,critirion, dataloader, device, per_class=True, show=False, te
 
     correct_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     total_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    precision_count = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
@@ -259,15 +281,15 @@ def evaluate(model,critirion, dataloader, device, per_class=True, show=False, te
             loss = critirion(outputs, labels)
             val_loss += loss.item()
 
-            _, predicted = torch.max(outputs.data, 1)
-
-            
+            _, predicted = torch.max(outputs.data, 1)          
 
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
+            get_precision(predicted, labels)
+            return
             if test:
-                get_top_bottom_10(outputs)
+                get_top_bottom_10(outputs, inputs, labels)
 
 
             if per_class:
