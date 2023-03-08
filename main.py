@@ -29,10 +29,9 @@ WIDTH = 150
 HEIGHT = 150
 
 BATCH_SIZE = 128
-ACCUMULATION_STEPS = 4
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 2
+EPOCHS = 150
 
 
 def get_image_hash(image):
@@ -99,7 +98,7 @@ def process_data(path):
     for folder in os.listdir(path):
         #dont want .DS_Store
         if "DS" not in folder:
-            for img in os.listdir(path+'/'+folder+"/test"):
+            for img in os.listdir(path+'/'+folder):
                 if img.endswith('.jpg'):
                     image = np.array(Image.open(os.path.join(path,folder,img)))
                     image_hash = get_image_hash(image)
@@ -174,6 +173,8 @@ def train_model(model, critirion, optimizer, model_path, device):
     - model_path (str): The path you want to save your model to.
     - device (torch.device): Device to use for training.
     '''
+    training_loss = []
+    validation_loss = []
     for epoch in range(EPOCHS):
         running_loss = 0.0
         correct = 0
@@ -198,12 +199,33 @@ def train_model(model, critirion, optimizer, model_path, device):
         with torch.no_grad():
             val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, False)
         
-        # print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n"
-            #   f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.4f}")
-    
+        print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n"
+        f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.4f}")
+        
+        training_loss.append(running_loss)
+        validation_loss.append(val_loss)
+
+    x = np.arrange(EPOCHS)
+
+    plt.plot(x, training_loss)
+    plt.xlable("Epochs")
+    plt.ylable("Loss")
+    plt.title("Training loss")
+    plt.savefig("training_loss.png")
+    plt.figure()
+
+    plt.plot(x, validation_loss)
+    plt.xlable("Epochs")
+    plt.ylable("Loss")
+    plt.title("Validation loss")
+    plt.savefig("validation_loss.png")
+
+
     with torch.no_grad():
-        check = False
         val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, True)
+
+    torch.save(model.state_dict(), model_path)
+
 
 def get_top_bottom_10(softmax, inputs, labels):
     # Get the indices of the highest and lowest probability scores
@@ -211,7 +233,7 @@ def get_top_bottom_10(softmax, inputs, labels):
     min_values = torch.topk(softmax, k=1, dim=1,largest=False)[0].squeeze(1)
     top_values, top_indices = torch.topk(max_values, k=10)
     bottom_values, bottom_indices = torch.topk(min_values, k=10, largest=False)
-    print()
+
     for i in range(10):
 
         image = np.transpose(inputs[top_indices[i]].numpy(), (2, 1, 0))
@@ -228,9 +250,7 @@ def get_top_bottom_10(softmax, inputs, labels):
 
 def get_precision(outputs, labels):
     # Calculate the confusion matrix
-    print(outputs.shape)
-    print(labels.shape)
-    cm = confusion_matrix(labels, outputs)
+    cm = confusion_matrix(tensor.cpu(labels), tensor.cpu(outputs))
 
     # Calculate the precision for each class
     class_precision = []
@@ -286,11 +306,10 @@ def evaluate(model,critirion, dataloader, device, per_class=True, show=False, te
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-            get_precision(predicted, labels)
-            return
+            #get_precision(predicted, labels)
+
             if test:
                 get_top_bottom_10(outputs, inputs, labels)
-
 
             if per_class:
                 mask1 = torch.eq(labels, predicted)
@@ -330,8 +349,8 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_path = "models/model1_50"
-    train = False
+    model_path = "models/model1_150_lr=0.001"
+    train = True
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
