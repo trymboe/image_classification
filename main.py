@@ -1,6 +1,7 @@
 import os
 import torch
 import hashlib
+import collections
 import numpy as np
 import torch.nn as nn
 import matplotlib.pyplot as plt
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 from torch.utils.data import DataLoader
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import precision_score
 from sklearn.model_selection import train_test_split
 
 from resnet import ResNet18
@@ -31,7 +32,7 @@ HEIGHT = 150
 BATCH_SIZE = 128
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 150
+EPOCHS = 2
 
 
 def get_image_hash(image):
@@ -137,9 +138,9 @@ def process_data(path):
 
 
 
-    train_loader = DataLoader(train_dl, batch_size=BATCH_SIZE, drop_last=True)
+    train_loader = DataLoader(train_dl, batch_size=BATCH_SIZE)
     test_loader = DataLoader(test_dl, batch_size=len(test_dl))
-    val_loader = DataLoader(val_dl, batch_size=BATCH_SIZE, drop_last=True)
+    val_loader = DataLoader(val_dl, batch_size=len(val_dl))
 
     return train_loader, test_loader, val_loader
 
@@ -195,28 +196,28 @@ def train_model(model, critirion, optimizer, model_path, device):
             
         accuracy = 100 * correct / total
 
+        print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n")
+
         # Evaluate on validation set
         with torch.no_grad():
             val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, False)
         
-        print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n"
-        f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.4f}")
         
-        training_loss.append(running_loss)
+        training_loss.append(running_loss/total)
         validation_loss.append(val_loss)
 
-    x = np.arrange(EPOCHS)
+    x = np.arange(EPOCHS)
 
     plt.plot(x, training_loss)
-    plt.xlable("Epochs")
-    plt.ylable("Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
     plt.title("Training loss")
     plt.savefig("training_loss.png")
     plt.figure()
 
     plt.plot(x, validation_loss)
-    plt.xlable("Epochs")
-    plt.ylable("Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
     plt.title("Validation loss")
     plt.savefig("validation_loss.png")
 
@@ -247,24 +248,11 @@ def get_top_bottom_10(softmax, inputs, labels):
         plt.figure()
 
     plt.show()
+    
 
-def get_precision(outputs, labels):
-    # Calculate the confusion matrix
-    cm = confusion_matrix(tensor.cpu(labels), tensor.cpu(outputs))
 
-    # Calculate the precision for each class
-    class_precision = []
-    for i in range(len(CLASSES_LIST)):
-        tp = cm[i,i]
-        fp = np.sum(cm[:,i]) - tp
-        precision = tp / (tp + fp)
-        class_precision.append(precision)
 
-    # Print the precision for each class
-    for i in range(len(CLASSES_LIST)):
-        print("Precision for class {}: {:.3f}".format(i, class_precision[i]))
-
-def evaluate(model,critirion, dataloader, device, per_class=True, show=False, test=False):
+def evaluate(model, critirion, dataloader, device, per_class=True, show=False, test=False):
     '''
     Evaluates a dataset on a model. Is used for validation for validation set and test set.
     
@@ -284,7 +272,7 @@ def evaluate(model,critirion, dataloader, device, per_class=True, show=False, te
     model.eval()
     correct = 0
     total = 0
-    val_loss = 0
+    running_loss = 0
 
     softmax = 0
 
@@ -299,19 +287,25 @@ def evaluate(model,critirion, dataloader, device, per_class=True, show=False, te
             outputs = model(inputs)
 
             loss = critirion(outputs, labels)
-            val_loss += loss.item()
+            running_loss += loss.item()
 
             _, predicted = torch.max(outputs.data, 1)          
 
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            
+            print(collections.Counter(predicted.tolist()))
+            print(collections.Counter(labels.tolist()))
 
-            #get_precision(predicted, labels)
 
             if test:
                 get_top_bottom_10(outputs, inputs, labels)
 
             if per_class:
+                #Calculate precision
+                classwize_precision = precision_score(labels, predicted, average=None)
+                average_precision = sum(classwize_precision) / len(classwize_precision)
+
                 mask1 = torch.eq(labels, predicted)
                 for i in range(len(CLASSES_LIST)):
                     total_counts[i] += (labels == i).sum().item()
@@ -322,24 +316,31 @@ def evaluate(model,critirion, dataloader, device, per_class=True, show=False, te
                     mask4 = torch.logical_and(torch.logical_and(mask1, mask2), mask3)
 
                     correct_counts[i] += torch.sum(mask4 == True,dim=0)
+                
+                print("validation set:")
+                print(f"Average accuracy is {100 * correct / total:.4f}")
+                for i in range(len(CLASSES_LIST)):
+                    accuracy = 100 * correct_counts[i] / total_counts[i]
+                    print("Accuracy for class {} is {:.2f}%".format(CLASSES_LIST[i], accuracy))
 
-            
+                print(f"Average precision is {average_precision:.4f}")
+                for i in range(len(CLASSES_LIST)):
+                    print("Precision for class {} is {:.2f}".format(CLASSES_LIST[i], classwize_precision[i]))
+
+                    
+           
             if show:
                 image = np.transpose(inputs[0], (2, 1, 0))
                 plt.imshow(image)
                 plt.title(f"correct {CLASSES_LIST[labels[0]]}, predicted {CLASSES_LIST[predicted[0]]}")
                 plt.figure()
 
-    if per_class:
-        print(f"total accuracy is {100 * correct / total:.4f}")
-        for i in range(len(CLASSES_LIST)):
-            accuracy = 100 * correct_counts[i] / total_counts[i]
-            print("Accuracy for class {} is {:.2f}%".format(i, accuracy))
 
-
+    val_loss = running_loss / total
 
     accuracy = 100 * correct / total
-    return loss, accuracy, (softmax, labels)
+
+    return val_loss, accuracy, (softmax, labels)
 
 
 if __name__ == "__main__":
@@ -350,7 +351,7 @@ if __name__ == "__main__":
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     model_path = "models/model1_150_lr=0.001"
-    train = True
+    train = False
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
@@ -359,7 +360,7 @@ if __name__ == "__main__":
     if train:
         train_model(model, critirion, optimizer, model_path, device)
     else:
-        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
         model.eval()
         loss, accuracy, softmax = evaluate(model, critirion, test_loader, device, show=False, test=True)
         print(f"Validation loss: {loss:.4f}, Validation accuracy: {accuracy:.4f}")
