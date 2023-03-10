@@ -15,8 +15,8 @@ from sklearn.model_selection import train_test_split
 from resnet import ResNet18
 from dataloader import Image_DL
 
-np.random.seed(69)
-torch.manual_seed(69)
+np.random.seed(42)
+torch.manual_seed(42)
 
 CLASSES = {
             "forest" : [1,0,0,0,0,0], "buildings" : [0,1,0,0,0,0],
@@ -32,7 +32,7 @@ HEIGHT = 150
 BATCH_SIZE = 128
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 2
+EPOCHS = 100
 
 
 def get_image_hash(image):
@@ -120,10 +120,10 @@ def process_data(path):
 
     
     # Split data into train and validation sets
-    x_train_val, x_test, y_train_val, y_test = train_test_split(images, labels, test_size=0.2, stratify=labels, random_state=42)
+    x_train_val, x_test, y_train_val, y_test = train_test_split(images, labels, test_size=0.176, stratify=labels, random_state=42)
 
     # Split validation set into validation and test sets
-    x_train, x_val, y_train, y_val = train_test_split(x_train_val, y_train_val, test_size=0.25, stratify=y_train_val, random_state=42)
+    x_train, x_val, y_train, y_val = train_test_split(x_train_val, y_train_val, test_size=0.143, stratify=y_train_val, random_state=42)
 
 
     
@@ -140,7 +140,7 @@ def process_data(path):
 
     train_loader = DataLoader(train_dl, batch_size=BATCH_SIZE)
     test_loader = DataLoader(test_dl, batch_size=len(test_dl))
-    val_loader = DataLoader(val_dl, batch_size=len(val_dl))
+    val_loader = DataLoader(val_dl, batch_size=BATCH_SIZE)
 
     return train_loader, test_loader, val_loader
 
@@ -158,11 +158,11 @@ def create_model(device):
     '''
     resnet18 = ResNet18(3, HEIGHT, WIDTH, len(CLASSES), device).to(device)
 
-    critirion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(resnet18.parameters(), lr=LR, momentum=MOMENTUM)
-    return resnet18, critirion, optimizer
+    return resnet18, criterion, optimizer
 
-def train_model(model, critirion, optimizer, model_path, device):
+def train_model(model, criterion, optimizer, model_path, device):
     '''
     Trains a PyTorch model on a given dataset.
     
@@ -185,7 +185,7 @@ def train_model(model, critirion, optimizer, model_path, device):
             optimizer.zero_grad()
 
             outputs = model(inputs)
-            loss = critirion(outputs, labels)
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             
@@ -196,11 +196,12 @@ def train_model(model, critirion, optimizer, model_path, device):
             
         accuracy = 100 * correct / total
 
-        print(f"Epoch {epoch+1}\nTraining loss: {running_loss/total:.4f} - Training accuracy {accuracy:.4f}\n")
+        print(f"\n\nEpoch {epoch+1}\nTraining accuracy {accuracy:.4f} - Training loss: {running_loss/total:.4f} ")
 
         # Evaluate on validation set
         with torch.no_grad():
-            val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, False)
+            print("validation set:")
+            val_loss, val_acc = evaluate(model, criterion, val_loader, device, False)
         
         
         training_loss.append(running_loss/total)
@@ -221,18 +222,15 @@ def train_model(model, critirion, optimizer, model_path, device):
     plt.title("Validation loss")
     plt.savefig("validation_loss.png")
 
-
-    with torch.no_grad():
-        val_loss, val_acc, _ = evaluate(model, critirion, val_loader, device, True)
-
     torch.save(model.state_dict(), model_path)
 
 
 def get_top_bottom_10(softmax, inputs, labels):
     # Get the indices of the highest and lowest probability scores
     max_values = torch.topk(softmax, k=1, dim=1)[0].squeeze(1)
-    min_values = torch.topk(softmax, k=1, dim=1,largest=False)[0].squeeze(1)
     top_values, top_indices = torch.topk(max_values, k=10)
+    
+    min_values = torch.topk(softmax, k=1, dim=1,largest=False)[0].squeeze(1)
     bottom_values, bottom_indices = torch.topk(min_values, k=10, largest=False)
 
     for i in range(10):
@@ -252,7 +250,7 @@ def get_top_bottom_10(softmax, inputs, labels):
 
 
 
-def evaluate(model, critirion, dataloader, device, per_class=True, show=False, test=False):
+def evaluate(model, criterion, dataloader, device, per_class=True, show=False, test=False):
     '''
     Evaluates a dataset on a model. Is used for validation for validation set and test set.
     
@@ -274,11 +272,11 @@ def evaluate(model, critirion, dataloader, device, per_class=True, show=False, t
     total = 0
     running_loss = 0
 
-    softmax = 0
-
     correct_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     total_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     precision_count = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+
+    classwize_precision = [0,0,0,0,0,0]
 
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
@@ -286,48 +284,34 @@ def evaluate(model, critirion, dataloader, device, per_class=True, show=False, t
 
             outputs = model(inputs)
 
-            loss = critirion(outputs, labels)
+            loss = criterion(outputs, labels)
             running_loss += loss.item()
 
             _, predicted = torch.max(outputs.data, 1)          
 
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+
+            #Calculate precision
+            classwize_precision += precision_score(labels.cpu(), predicted.cpu(), average=None)
             
-            print(collections.Counter(predicted.tolist()))
-            print(collections.Counter(labels.tolist()))
+            #Calculating classwize accuracy
+            mask1 = torch.eq(labels, predicted)
+            for i in range(len(CLASSES_LIST)):
+                total_counts[i] += (labels == i).sum().item()
+                
+                #Find the accuracy per class
+                mask2 = torch.eq(labels, i) 
+                mask3 = torch.eq(predicted, i)
+                mask4 = torch.logical_and(torch.logical_and(mask1, mask2), mask3)
 
-
+                correct_counts[i] += torch.sum(mask4 == True,dim=0)
+                
             if test:
                 get_top_bottom_10(outputs, inputs, labels)
+                torch.save(outputs, 'test_softmax.pt')
+                torch.save(labels, 'test_labels.pt')
 
-            if per_class:
-                #Calculate precision
-                classwize_precision = precision_score(labels, predicted, average=None)
-                average_precision = sum(classwize_precision) / len(classwize_precision)
-
-                mask1 = torch.eq(labels, predicted)
-                for i in range(len(CLASSES_LIST)):
-                    total_counts[i] += (labels == i).sum().item()
-                    
-                    #Find the accuracy per class
-                    mask2 = torch.eq(labels, i) 
-                    mask3 = torch.eq(predicted, i)
-                    mask4 = torch.logical_and(torch.logical_and(mask1, mask2), mask3)
-
-                    correct_counts[i] += torch.sum(mask4 == True,dim=0)
-                
-                print("validation set:")
-                print(f"Average accuracy is {100 * correct / total:.4f}")
-                for i in range(len(CLASSES_LIST)):
-                    accuracy = 100 * correct_counts[i] / total_counts[i]
-                    print("Accuracy for class {} is {:.2f}%".format(CLASSES_LIST[i], accuracy))
-
-                print(f"Average precision is {average_precision:.4f}")
-                for i in range(len(CLASSES_LIST)):
-                    print("Precision for class {} is {:.2f}".format(CLASSES_LIST[i], classwize_precision[i]))
-
-                    
            
             if show:
                 image = np.transpose(inputs[0], (2, 1, 0))
@@ -335,12 +319,26 @@ def evaluate(model, critirion, dataloader, device, per_class=True, show=False, t
                 plt.title(f"correct {CLASSES_LIST[labels[0]]}, predicted {CLASSES_LIST[predicted[0]]}")
                 plt.figure()
 
+        average_precision = sum(classwize_precision) / len(classwize_precision)
+        
+        print(f"Average accuracy is {100 * correct / total:.4f}, loss is {running_loss/total}")
+        print(f"Classwize accuracy is:", end=" ")
+        for i in range(len(CLASSES_LIST)):
+            accuracy = 100 * correct_counts[i] / total_counts[i]
+            print("{} : {:.2f}%".format(CLASSES_LIST[i], accuracy), end=" - ")
+
+        print(f"\nAverage precision is {average_precision:.4f}")
+        print(f"Classwize precision is:", end=" ")
+        for i in range(len(CLASSES_LIST)):
+            print("{} : {:.2f}".format(CLASSES_LIST[i], classwize_precision[i]), end=" - ")
+
+
 
     val_loss = running_loss / total
 
     accuracy = 100 * correct / total
 
-    return val_loss, accuracy, (softmax, labels)
+    return val_loss, accuracy
 
 
 if __name__ == "__main__":
@@ -350,20 +348,20 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_path = "models/model1_150_lr=0.001"
-    train = False
+    model_path = "models/model1_e100_lr0.001"
+    train = True
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
-    model, critirion, optimizer = create_model(device)
+    model, criterion, optimizer = create_model(device)
     print("model created")
     if train:
-        train_model(model, critirion, optimizer, model_path, device)
+        train_model(model, criterion, optimizer, model_path, device)
     else:
         model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
         model.eval()
-        loss, accuracy, softmax = evaluate(model, critirion, test_loader, device, show=False, test=True)
-        print(f"Validation loss: {loss:.4f}, Validation accuracy: {accuracy:.4f}")
+        print("\n\nTest set evaluation")
+        loss, accuracy = evaluate(model, criterion, test_loader, device, show=False, test=True)
         plt.show()
 
     
