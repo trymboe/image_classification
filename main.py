@@ -1,6 +1,7 @@
 import os
 import torch
 import hashlib
+import statistics
 import collections
 import numpy as np
 import torch.nn as nn
@@ -32,7 +33,7 @@ HEIGHT = 150
 BATCH_SIZE = 128
 LR = 0.001
 MOMENTUM = 0.9
-EPOCHS = 100
+EPOCHS = 45
 
 
 def get_image_hash(image):
@@ -176,6 +177,10 @@ def train_model(model, criterion, optimizer, model_path, device):
     '''
     training_loss = []
     validation_loss = []
+
+    total_CW_acc = []
+    total_CW_prec = []
+    
     for epoch in range(EPOCHS):
         running_loss = 0.0
         correct = 0
@@ -201,13 +206,52 @@ def train_model(model, criterion, optimizer, model_path, device):
         # Evaluate on validation set
         with torch.no_grad():
             print("validation set:")
-            val_loss, val_acc = evaluate(model, criterion, val_loader, device, False)
-        
+            val_loss, val_acc, class_wise_acc, class_wise_precision,  = evaluate(model, criterion, val_loader, device, False)
+            class_wise_acc = [tensor[0].item() for tensor in class_wise_acc]
+            total_CW_acc.append(class_wise_acc)
+            total_CW_prec.append(class_wise_precision)
+
         
         training_loss.append(running_loss/total)
         validation_loss.append(val_loss)
 
+
+    mean_acc = []
+    mean_prec = []
+    for i in range(EPOCHS):
+        mean_acc.append(statistics.mean(total_CW_acc[i]))
+        mean_prec.append(statistics.mean(total_CW_prec[i]))
+
+    total_CW_acc = list(np.transpose(np.array(total_CW_acc)))
+    total_CW_prec = list(np.transpose(np.array(total_CW_prec)))
+
+    
+    print(len(mean_acc), mean_acc)
+
     x = np.arange(EPOCHS)
+    legend = ["forest", "buildings",
+            "glacier", "street",
+            "mountain", "sea", "mean"]
+
+    for i in range(len(CLASSES_LIST)):
+        plt.plot(x, total_CW_acc[i], linestyle="--")
+    plt.plot(x, mean_acc, linewidth=2, color='red')
+    plt.legend(legend)
+    plt.title("Class-wise accuracy")
+    plt.xlabel("epochs")
+    plt.ylabel("accuracy")
+    plt.savefig("CW_accuracy.png")
+    plt.figure()
+
+    for i in range(len(CLASSES_LIST)):
+        plt.plot(x, total_CW_prec[i], linestyle="--")
+    plt.plot(x, mean_prec, linewidth=2, color='red')
+    plt.legend(legend)
+    plt.title("Class-wise precision")
+    plt.xlabel("epochs")
+    plt.ylabel("precision")
+    plt.savefig("CW_precision.png")
+    plt.figure()
 
     plt.plot(x, training_loss)
     plt.xlabel("Epochs")
@@ -278,6 +322,8 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
 
     class_wise_precision = [0,0,0,0,0,0]
 
+    class_wise_acc = [[],[],[],[],[],[]]
+
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
             inputs, labels = data[0].to(device), data[1].to(device)
@@ -294,7 +340,6 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
 
             #Calculate precision
             class_wise_precision += precision_score(labels.cpu(), predicted.cpu(), average=None)
-            
             #Calculating class-wise accuracy
             mask1 = torch.eq(labels, predicted)
             for i in range(len(CLASSES_LIST)):
@@ -325,6 +370,7 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
         print(f"class-wise accuracy is:", end=" ")
         for i in range(len(CLASSES_LIST)):
             accuracy = 100 * correct_counts[i] / total_counts[i]
+            class_wise_acc[i].append(accuracy)
             print("{} : {:.2f}%".format(CLASSES_LIST[i], accuracy), end=" - ")
 
         print(f"\nAverage precision is {average_precision:.4f}")
@@ -338,7 +384,7 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
 
     accuracy = 100 * correct / total
 
-    return val_loss, accuracy
+    return val_loss, accuracy, class_wise_acc, class_wise_precision
 
 
 if __name__ == "__main__":
@@ -348,8 +394,8 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_path = "models/model1_e45_lr0.001"
-    train = False
+    model_path = "models/model1_e45_lr0.001_2"
+    train = True
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
@@ -361,7 +407,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
         model.eval()
         print("\n\nTest set evaluation")
-        loss, accuracy = evaluate(model, criterion, test_loader, device, show=False, test=True)
+        loss, accuracy, class_wise_acc, class_wise_precision = evaluate(model, criterion, test_loader, device, show=False, test=True)
         plt.show()
 
     
