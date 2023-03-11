@@ -276,7 +276,7 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
     total_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     precision_count = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
-    classwize_precision = [0,0,0,0,0,0]
+    class_wise_precision = [0,0,0,0,0,0]
 
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
@@ -293,9 +293,9 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
             correct += (predicted == labels).sum().item()
 
             #Calculate precision
-            classwize_precision += precision_score(labels.cpu(), predicted.cpu(), average=None)
+            class_wise_precision += precision_score(labels.cpu(), predicted.cpu(), average=None)
             
-            #Calculating classwize accuracy
+            #Calculating class-wise accuracy
             mask1 = torch.eq(labels, predicted)
             for i in range(len(CLASSES_LIST)):
                 total_counts[i] += (labels == i).sum().item()
@@ -319,18 +319,18 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
                 plt.title(f"correct {CLASSES_LIST[labels[0]]}, predicted {CLASSES_LIST[predicted[0]]}")
                 plt.figure()
 
-        average_precision = sum(classwize_precision) / len(classwize_precision)
+        average_precision = sum(class_wise_precision) / len(class_wise_precision)
         
         print(f"Average accuracy is {100 * correct / total:.4f}, loss is {running_loss/total}")
-        print(f"Classwize accuracy is:", end=" ")
+        print(f"class-wise accuracy is:", end=" ")
         for i in range(len(CLASSES_LIST)):
             accuracy = 100 * correct_counts[i] / total_counts[i]
             print("{} : {:.2f}%".format(CLASSES_LIST[i], accuracy), end=" - ")
 
         print(f"\nAverage precision is {average_precision:.4f}")
-        print(f"Classwize precision is:", end=" ")
+        print(f"class-wise precision is:", end=" ")
         for i in range(len(CLASSES_LIST)):
-            print("{} : {:.2f}".format(CLASSES_LIST[i], classwize_precision[i]), end=" - ")
+            print("{} : {:.2f}".format(CLASSES_LIST[i], class_wise_precision[i]), end=" - ")
 
 
 
@@ -348,8 +348,8 @@ if __name__ == "__main__":
     #for training on GPU for M1 mac
     #device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-    model_path = "models/model1_e100_lr0.001"
-    train = True
+    model_path = "models/model1_e45_lr0.001"
+    train = False
 
     train_loader, test_loader, val_loader = process_data("data")
     print("data loaded")
