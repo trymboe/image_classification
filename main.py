@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 from torch.utils.data import DataLoader
+import torchvision.transforms as transforms
 from sklearn.metrics import precision_score
 from sklearn.model_selection import train_test_split
 from torchvision.models import resnet50, ResNet50_Weights
@@ -281,71 +282,43 @@ def find_indices(list_to_check, item_to_find):
             indices.append(idx)
     return indices
 
-def get_top_bottom_10(softmax, inputs, labels):
+def get_top_bottom_10(softmax, inputs, labels, class_nr):
+    """Find the top-10 and bottom-10 images for a given class based on the softmax values, and display them in a plot.
 
-    class_0 = (find_indices(list(labels), 0))
-    class_1 = (find_indices(list(labels), 1))
-    class_2 = (find_indices(list(labels), 2))
-    class_0_images = [inputs[i] for i in class_0]
-    class_1_images = [inputs[i] for i in class_0]
-    class_2_images = [inputs[i] for i in class_0]
+    Args:
+        softmax (torch.Tensor): A tensor of the softmax values for the six classes for each image.
+        inputs (torch.Tensor): The input image as a tensor.
+        labels (torch.Tensor): A tensor of the correct label for each image.
+        class_nr (int): The number between 0 and 5, corresponding to the class we want to find the top-10 and bottom-10 images for.
+    """
 
-    class_0_softmax = [softmax[i] for i in class_0]
+    _, preds = torch.max(softmax, dim=1)
 
-
-    # Get the indices of the highest and lowest probability scores
-    max_values = list(torch.topk(softmax, k=1, dim=1)[0].squeeze(1))
-
-    class_0_max_values = torch.FloatTensor([max_values[i] for i in class_0])
-    class_1_max_values = torch.FloatTensor([max_values[i] for i in class_1])
-    class_2_max_values = torch.FloatTensor([max_values[i] for i in class_2])
-    top_indices_0 = torch.topk(class_0_max_values, k=10)[1]
-    top_indices_1 = torch.topk(class_1_max_values, k=10)[1]
-    top_indices_2 = torch.topk(class_2_max_values, k=10)[1]
+    class_indices = (labels == class_nr).nonzero().squeeze()
+    class_softmax = softmax[class_indices, class_nr]
     
-    min_values = torch.topk(softmax, k=1, dim=1,largest=False)[0].squeeze(1)
-    class_0_min_values = torch.FloatTensor([min_values[i] for i in class_0])
-    class_1_min_values = torch.FloatTensor([min_values[i] for i in class_1])
-    class_2_min_values = torch.FloatTensor([min_values[i] for i in class_2])
-    bottom_indices_0 = torch.topk(class_0_min_values, k=10)[1]
-    bottom_indices_1 = torch.topk(class_1_min_values, k=10)[1]
-    bottom_indices_2 = torch.topk(class_2_min_values, k=10)[1]
-
-    for i in range(10):
-        image = np.transpose(class_0_images[top_indices_0[i]].numpy(), (2, 1, 0))
-        plt.imshow(image)
-        plt.title(f"Top score: label: forest, predicted: {CLASSES_LIST[torch.topk(softmax[top_indices_0[0]], k=1)[1].item()]}")
-        plt.figure()
-
-    # for i in range(10):
-    #     image = np.transpose(class_0_images[bottom_indices_0[i]].numpy(), (2, 1, 0))
-    #     plt.imshow(image)
-    #     plt.title(f"Bottom score: label: forest, predicted: {CLASSES_LIST[torch.topk(softmax[bottom_indices_0[0]], k=1)[1].item()]}")
-    #     plt.figure()
+    # Find the top-10 and bottom-10 images based on the softmax values
+    top_indices = torch.argsort(class_softmax, descending=True)[:10]
+    bottom_indices = torch.argsort(class_softmax, descending=False)[:10]
     
-    # for i in range(10):
-    #     image = np.transpose(class_1_images[top_indices_1[i]].numpy(), (2, 1, 0))
-    #     plt.imshow(image)
-    #     plt.title(f"Top score: label: buildings, predicted: {CLASSES_LIST[torch.topk(softmax[top_indices_1[0]], k=1)[1].item()]}")
-    #     plt.figure()
-    # for i in range(10):
-    #     image = np.transpose(class_1_images[bottom_indices_1[i]].numpy(), (2, 1, 0))
-    #     plt.imshow(image)
-    #     plt.title(f"Bottom score: label: buildings, predicted: {CLASSES_LIST[torch.topk(softmax[bottom_indices_1[0]], k=1)[1].item()]}")
-    #     plt.figure()
+    fig, axs = plt.subplots(2, 10, figsize=(20, 4))
     
-    # for i in range(10):
-    #     image = np.transpose(class_2_images[top_indices_2[i]].numpy(), (2, 1, 0))
-    #     plt.imshow(image)
-    #     plt.title(f"Top score: label: glacier, predicted: {CLASSES_LIST[torch.topk(softmax[top_indices_2[0]], k=1)[1].item()]}")
-    #     plt.figure()
-    # for i in range(10):
-    #     image = np.transpose(class_2_images[bottom_indices_2[i]].numpy(), (2, 1, 0))
-    #     plt.imshow(image)
-    #     plt.title(f"Bottom score: label: glacier, predicted: {CLASSES_LIST[torch.topk(softmax[bottom_indices_2[0]], k=1)[1].item()]}")
-    #     plt.figure()
+    # Display the top-10 images
+    for i, idx in enumerate(top_indices):
+        img = inputs[class_indices[idx]].permute(1, 2, 0).cpu().numpy()
+        axs[0, i].imshow(img)
+        axs[0, i].axis('off')
+        axs[0, i].set_title(f"Pred: {CLASSES_LIST[preds[class_indices[idx]].item()]}")
 
-    plt.show()
+    # Display the bottom-10 images
+    for i, idx in enumerate(bottom_indices):
+        img = inputs[class_indices[idx]].permute(1, 2, 0).cpu().numpy()
+        axs[1, i].imshow(img)
+        axs[1, i].axis('off')
+        axs[1, i].set_title(f"Pred: {CLASSES_LIST[preds[class_indices[idx]].item()]}")
+
+
+
     
 def evaluate(model, criterion, dataloader, device, per_class=True, show=False, test=False):
     '''
@@ -406,7 +379,10 @@ def evaluate(model, criterion, dataloader, device, per_class=True, show=False, t
                 correct_counts[i] += torch.sum(mask4 == True,dim=0)
                 
             if test:
-                get_top_bottom_10(outputs, inputs, labels, 0)
+                for i in range(3):
+                    get_top_bottom_10(outputs, inputs, labels, i)
+                plt.show()
+
                 torch.save(outputs, 'test_softmax.pt')
                 torch.save(labels, 'test_labels.pt')
 
@@ -486,7 +462,6 @@ def unpickle(file):
         dict = pickle.load(fo, encoding='bytes')
     return dict
 
-
 def forward_hook1(module, input, output):
     non_pos_count = torch.sum(output <= 0)
     total_count = output.numel()
@@ -523,8 +498,8 @@ if __name__ == "__main__":
 
     model_path = "models/model1_e45_lr0.001"
     train = False
-    hooks = True
-    task3 = True
+    hooks = False
+    task3 = False
 
     
 
@@ -545,7 +520,3 @@ if __name__ == "__main__":
         else:
             print("\n\n-- Test set evaluation --")
             loss, accuracy, class_wise_acc, class_wise_precision = evaluate(model, criterion, test_loader, device, show=False, test=True)
-
-
-    
-
