@@ -4,8 +4,6 @@ import hashlib
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-
 from PIL import Image
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -105,7 +103,6 @@ def process_data(path, batch_size, classes_list):
 
     # Split validation set into validation and test sets
     x_train, x_val, y_train, y_val = train_test_split(x_train_val, y_train_val, test_size=0.143, stratify=y_train_val, random_state=42)
-
 
     
     assert check_for_duplicates([x_train, x_test, x_val]) == 0, "The obtained splits are not disjoint"

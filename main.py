@@ -25,10 +25,10 @@ EPOCHS = 5
 
 
 if __name__ == "__main__":
-    train = True
-    hooks = False
-    task3 = False
-    mac = True
+    train = False
+    hooks = True
+    task3 = True
+    mac = False
 
     if mac:
         #for training on GPU for M1 mac
