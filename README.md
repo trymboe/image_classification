@@ -7,18 +7,16 @@ Test data labels, and test data softmax are available in the root folder as .pt 
 ## usage
 
 ### argparse
-image_classification.py [-h] [-t] [--model_path MODEL_PATH] [-td] [--task2] [--task3]
-
-Image classification network
+Usage: python main.py [-h] [-t] [--model_path MODEL_PATH] [-td] [--task2] [--task3]
 
 optional arguments:
   -h, --help            show this help message and exit
-  -t, --train           train the model (default: False)
+  -t, --train           Train the model (default: False)
   --model_path MODEL_PATH
-                        path to save the trained model (default: None)
-  -td, --test_data      use a small dataset for testing (default: False)
-  --task2               run task 2 (default: False)
-  --task3               run task 3 (default: False)
+                        Path to save the trained model (default: None)
+  -td, --test_data      Use a small dataset for testing (default: False)
+  --task2               Run task 2 (default: False)
+  --task3               Run task 3 (default: False)
 
 
 ## running 
