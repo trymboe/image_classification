@@ -30,6 +30,9 @@ pip3 install -r requirements.txt
 To run this program, run main.py.
 
 If [-t, --train] is not active, the evaluation parth will start using a pretrained model that is found in the models directory.
-If you want to train your own model, you can add the [-t, --train] argument. This also requires [--model_path] to be added, and 
-is the path the newly trained model will be saved to.
+This requires no path setup as a path to a pretrained model is already coded for evaluation.
+
+If you want to train your own model, you can add the [-t, --train] argument. IMPORTAINT, everything is seeded
+This also requires [--model_path] to be added, and is the path the newly trained model will be saved to.
+If you want to evaluate this new model, you need to change the path in main.py
 
