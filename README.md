@@ -9,6 +9,7 @@ Test data labels, and test data softmax are available in the root folder as .pt 
 ### argparse
 Usage: python main.py [-h] [-t] [--model_path MODEL_PATH] [-td] [--task2] [--task3]
 
+```
 optional arguments:
   -h, --help            show this help message and exit
   -t, --train           Train the model (default: False)
@@ -17,7 +18,7 @@ optional arguments:
   -td, --test_data      Use a small dataset for testing (default: False)
   --task2               Run task 2 (default: False)
   --task3               Run task 3 (default: False)
-
+```
 
 ## running 
 Install required packages using 
