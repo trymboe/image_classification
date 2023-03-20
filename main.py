@@ -1,5 +1,6 @@
 import ssl
 import torch
+import argparse
 import numpy as np
 
 from model import create_model
@@ -17,11 +18,12 @@ CLASSES_LIST = ["forest", "buildings",
             "glacier", "street",
             "mountain", "sea"]
 
-
 BATCH_SIZE = 128
 LR = 0.001
 MOMENTUM = 0.9
 EPOCHS = 5
+
+
 
 
 if __name__ == "__main__":
@@ -29,6 +31,7 @@ if __name__ == "__main__":
     hooks = True
     task3 = True
     mac = False
+    testdata = True
 
     if mac:
         #for training on GPU for M1 mac
@@ -39,7 +42,7 @@ if __name__ == "__main__":
 
     model_path = "models/model1_e45_lr0.001"
 
-    train_loader, test_loader, val_loader = process_data("data", BATCH_SIZE, CLASSES_LIST)
+    train_loader, test_loader, val_loader = process_data("data", BATCH_SIZE, testdata=testdata)
     print("-- data loaded --")
     model, criterion, optimizer = create_model(device, LR, MOMENTUM)
     print("-- model created --")
@@ -52,7 +55,7 @@ if __name__ == "__main__":
         model.eval()
         if hooks:
             print("-- calculating statistics --")
-            get_statistics(model, device, test_loader, task3)
+            get_statistics(model, device, task3)
         else:
             print("\n\n-- Test set evaluation --")
             loss, accuracy, class_wise_acc, class_wise_precision = evaluate(model, criterion, test_loader, device, show=False, test=True)

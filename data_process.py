@@ -13,6 +13,9 @@ from dataloader import Image_DL
 np.random.seed(42)
 torch.manual_seed(42)
 
+CLASSES_LIST = ["forest", "buildings",
+            "glacier", "street",
+            "mountain", "sea"]
 
 def get_image_hash(image):
     """
@@ -50,7 +53,7 @@ def check_for_duplicates(arrays):
     plt.show()
     return copies
 
-def process_data(path, batch_size, classes_list):
+def process_data(path, batch_size, testdata = False):
     """
     Process image data located at `path` and split into train, validation, and test sets.
     Asserts that the splits are disjoint.
@@ -77,9 +80,10 @@ def process_data(path, batch_size, classes_list):
     print("-- loading images --")
     for folder in os.listdir(path):
         #dont want .DS_Store
-        if "cifar" not in folder and "DS" not in folder:
-            for img in os.listdir(path+'/'+folder+'/test'):
-                if img.endswith('.jpg'):
+        if "cifar" not in folder and "DS" not in folder and "imagenet" not in folder:
+            full_path = path+'/'+folder+'/test' if testdata else path+'/'+folder
+            for img in os.listdir(full_path):
+                if img.endswith('.jpg') or img.endswith('.JPEG'):
                     image = np.array(Image.open(os.path.join(path,folder,img)))
                     image_hash = get_image_hash(image)
                     #Do not want duplicates or images of wrong dimention
@@ -90,8 +94,8 @@ def process_data(path, batch_size, classes_list):
                         image = np.transpose(image, (2, 0, 1))
 
                         images.append(image)
-                        labels.append(classes_list.index(folder))
-                        # labels.append(CLASSES[folder])
+                        labels.append(CLASSES_LIST.index(folder))
+
             print(f"{folder} done")
 
     images = np.asarray(images)
